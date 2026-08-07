@@ -84,7 +84,7 @@ uv run --with-requirements requirements.txt \
 - Optimization randomness (simulated annealing) is thus separated from penalty validation.
 - Figures and summary tables under `results_py/cross_solution_validation/` are generated from the same validation run.
 
-Note on the reference software: the archived solutions were produced with the CONOP9 executable (P. Sadler's freeware program; see Sadler & Cooper 2003). Reference outputs are included in this repository so that the validation can be reproduced without re-running the original binary.
+Note on the reference software: the archived solutions were produced with the CONOP9 executable, P. Sadler's freeware program (Sadler & Cooper 2003). The original executable is **not redistributed in this repository**; the reference outputs are included so that the validation can be reproduced without re-running the original binary. Please refer to the original literature for the software and method.
 
 ## 8. Technical report
 
@@ -102,7 +102,6 @@ CONOP-run/           CONOP9 input data and reference run outputs
 results/             21 archived CONOP9 runs (reference solutions + outmain penalties)
 results_py/          Python-generated results (cross-solution validation, diagnostics)
 docs/paper/          Course paper (PDF)
-references/          Reference literature PDFs
 ```
 
 ## 10. Limitations
@@ -114,8 +113,13 @@ references/          Reference literature PDFs
 
 ## 11. Course context / Attribution
 
-Project developed for the graduate course "Frontiers and Applications of Big Data in Geology" (《地质学大数据前沿与应用》), School of Earth Sciences and Engineering, Nanjing University (Spring 2026, Prof. Junxuan Fan). The Seymour Island ammonite dataset and the CONOP workflow were provided as course materials.
+Project developed for the graduate course "Frontiers and Applications of Big Data in Geology" (《地质学大数据前沿与应用》), School of Earth Sciences and Engineering, Nanjing University (Spring 2026, Prof. Junxuan Fan). The Seymour Island ammonite dataset, the CONOP workflow, and the course lecture materials were provided as course materials; lecture materials are not redistributed here.
 
-Key reference: Sadler, P. M., & Cooper, R. A. (2003). Best-fit intervals and consensus sequences. In *High-Resolution Approaches in Stratigraphic Paleontology* (pp. 49–94). Kluwer Academic Publishers.
+Key references:
+
+- Sadler, P. M., & Cooper, R. A. (2003). Best-fit intervals and consensus sequences. In *High-Resolution Approaches in Stratigraphic Paleontology* (Topics in Geobiology, vol. 19, pp. 49–94). Kluwer Academic Publishers. https://doi.org/10.1007/978-1-4020-9053-0_2
+- Sadler, P. M., Cooper, R. A., & Melchin, M. (2009). High-resolution, early Paleozoic (Ordovician–Silurian) time scales. *Geological Society of America Bulletin*, 121(5–6), 887–906. https://doi.org/10.1130/B26357.1
+
+Source code is authored as part of this project; course-provided data and CONOP-derived reference outputs retain their original provenance. No repository-wide license is currently asserted.
 
 The group presentation for the course was completed; the final presentation is not currently distributed in this repository.
