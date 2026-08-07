@@ -10,8 +10,9 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 **CONOP 是 Windows 二进制程序，只能在 Windows 上手动运行。**
 
+CONOP9 executable 不随本仓库分发。重新运行原始 CONOP9 需要自行准备合法来源的本地 executable；Python regression 与 cross-solution validation 不依赖 executable（21 个 archived reference outputs 已保留在 `results/`，验证可直接运行）。
+
 工作目录：`CONOP-run/`
-可执行文件：`CONOP64ver8p621.exe`（64位）或 `CONOP32.exe`（32位）
 配置文件：`CONOP-run/conop9.cfg`
 
 关键参数（`&getrun` 段）：
@@ -20,7 +21,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 - `STEPS`：每温度步的扰动次数（默认 600）
 - `SOLVER=anneal`：模拟退火求解器
 
-批量参数扫描脚本为 `scripts/batch_run.bat`（Windows，修改 `CONOP_DIR` 路径后运行），每组参数重复 3 次，手动确认后自动保存结果。
+批量参数扫描脚本为 `scripts/batch_run.bat`（Windows，仓库不提供 executable；如需外部 CONOP9，先 `set CONOP_EXE=本地路径` 再运行脚本），每组参数重复 3 次，手动确认后自动保存结果。
 
 ## 数据流
 
@@ -77,7 +78,7 @@ $PY scripts/conop.py multistart --n 50 --tag <tag> --workers 8  # 多进程多�
 $PY scripts/conop.py sweep --mode ordinal --tag baseline    # 7 组参数 × 3 seed = 21 次扫描
 $PY scripts/conop.py plot-conv                              # 轨迹收敛图
 $PY scripts/conop.py plot-sweep                             # 21 次扫描对比图
-$PY -m pytest tests/test_regression.py -v           # 回归测试（9 项）
+$PY -m pytest tests/test_regression.py -v           # 回归测试（10 项）
 ```
 
 `multistart` 输出: `results_py/multistart/<timestamp>_<tag>/{summary.csv, bestsoln_s*.dat, manifest.json}`
@@ -113,5 +114,6 @@ $PY -m pytest tests/test_regression.py -v           # 回归测试（9 项）
 
 - `论文/`：小论文草稿（格式参考《高校地质学报》）
 - `PPT/`：课堂汇报幻灯片
-- `slides/`：课程讲义 PDF
-- `references/`：参考文献 PDF
+- `docs/paper/`：课程论文 PDF（公开版）
+
+课程讲义与参考文献 PDF 不随仓库分发。
