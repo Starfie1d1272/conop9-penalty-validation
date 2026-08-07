@@ -4,5 +4,3 @@ matplotlib>=3.7
 scipy>=1.10
 numba>=0.59       # SA 内层循环 JIT 加速（缺失时 cost.py 自动 fallback 纯 Python）
 pytest>=7.4       # tests/test_regression.py
-torch>=2.0        # 暂未实际使用，按需保留
-pymupdf>=1.24     # 暂未实际使用，按需保留
