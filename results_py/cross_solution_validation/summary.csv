@@ -1,0 +1,4 @@
+metric,n,exact,mae,max_abs,mean_delta
+ordinal,21,21,0.0,0.0,0.0
+level,21,21,0.0,0.0,0.0
+eventual,21,0,33.76190476190476,83.0,-33.76190476190476
