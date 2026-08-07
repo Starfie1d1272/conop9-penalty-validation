@@ -1,7 +1,13 @@
-node_modules/
-.DS_Store
-*.pyc
+# Python
 __pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# Notebooks
 .ipynb_checkpoints/
 
 # 课堂课件，不推送
@@ -12,3 +18,9 @@ slides/
 
 # Skills lock file (global install, not project-specific)
 skills-lock.json
+
+# Reasonix 语义索引缓存（可再生成，非人工研究数据）
+.reasonix/
+
+# 学号隐私保护：任何含学号的文件名不入库
+*231830104*

@@ -1,14 +1,14 @@
-"""Eventual misfit 18 分差距溯源 — 对应作业的"代价函数实现细节"讨论。
+"""Eventual misfit 差距溯源 — 对应作业的"代价函数实现细节"讨论。
 
 CONOP9 在 bestsoln.dat 上报 Eventual = 353；当前 Python 复现 = ~335，差 -18。
 
 诊断思路：
-    1) 按 section 拆 Eventual：哪几个剖面贡献了主要差距？
-    2) 按 event 拆 Eventual：哪几个 event 在 Python 版被算少了？
+    1) 按 section 拆 Python Eventual：哪几个剖面贡献最高？
+    2) 按 event 拆 Python Eventual：哪几个 event 贡献最高？
     3) 用 CONOP9 bestsoln.dat 直接评估 → 排除 SA 是否收敛到不同解
 
 输出 results_py/eventual_diag/
-    by_section.csv     12 行：sec_id, level, eventual, py_eventual_real
+    by_section.csv     12 行：sec_id, level, eventual
     by_event.csv       120 行：event_key, taxon, type, eventual_contrib
     diag.png           三联图
     report.txt
@@ -179,7 +179,7 @@ def main():
     ax.axhline(80, color="gray", ls=":", lw=1)
     ax.set_xlabel("事件数（按贡献降序）")
     ax.set_ylabel("累积 Eventual 占比 (%)")
-    ax.set_title("贡献集中度（80% 来自前 ? 个）")
+    ax.set_title("Eventual 贡献集中度")
     ax.grid(alpha=0.3)
 
     fig.suptitle(f"Eventual misfit 溯源  |  "
@@ -217,17 +217,16 @@ def main():
                         4: "ASH-?", 5: "AGE"}.get(e[1], str(e[1]))
             f.write(f"  {tname:<25} {type_lab:<5} contrib={c:>5.1f}\n")
 
-        f.write("\n# 18 分差距假设\n")
+        f.write("\n# 差距来源判断\n")
         delta = E_total - CONOP9_EVENTUAL
         f.write(f"  实测差 {delta:+.1f}\n")
         if abs(delta) < 25:
-            f.write(f"  → 落在 PAV 保序回归的下中位数（lower median）选择上：\n")
-            f.write(f"     CONOP9 偶数块用上中位数 / 我们的实现用下中位数，\n")
-            f.write(f"     约 5-15 个事件位置差 1，每个贡献 ~1-2 分。\n")
-            f.write(f"     这与 Top-10 贡献分布吻合（每个 ~1-3 分）。\n")
+            f.write("  → 该单解差距较小，PAV tie-breaking 是待检验假设之一。\n")
         else:
-            f.write(f"  → 差距偏大，可能不只是 PAV tie-breaking，"
-                    f"也可能是 horizon 集合的定义不同。\n")
+            f.write("  → 差距偏大，不应只归因于 PAV tie-breaking；"
+                    "forcing event 或 horizon 集合定义也需要检查。\n")
+        f.write("  注意：本报告拆分的是 Python Eventual 贡献，"
+                "并未获得 CONOP9 的逐事件贡献，不能直接定位 CONOP9-Python 差异事件。\n")
     print(f"✓ {rp}")
     print(f"\nTop 10 事件累计占比 {top10_share:.1f}%；"
           f"达到 80% 需要前 {n_for_80} 个事件")

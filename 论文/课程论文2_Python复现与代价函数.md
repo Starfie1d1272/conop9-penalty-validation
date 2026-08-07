@@ -1,158 +1,164 @@
-# CONOP 代价函数的 Python 复现与校验
+# CONOP9代价函数的Python跨解复现与Eventual偏差诊断
 
-**作者**：课程小组成员二  
+**作者**：杜鑫宇  
 **单位**：南京大学地球科学与工程学院，江苏 南京 210023
 
-**摘要**：原版 CONOP9 程序能够完成高维地层序列优化，但其 Windows 二进制运行方式和封闭实现限制了自动化实验、误差诊断和算法扩展。本文基于 `geology-big-data-hw-main` 项目的 Python 复现代码，系统说明 CONOP 输入解析、复合序列表示、Ordinal、Level 与 Eventual 三类代价函数的实现逻辑，并以原版 `bestsoln.dat` 和 `outmain.txt` 为基准进行校验。项目中 `conop_py/io.py` 负责解析 `sections.txt`、`events.txt`、`loadfile.dat` 与 `bestsoln.dat`，`conop_py/cost.py` 通过 `ConopContext` 预计算剖面观测、事件位置和 taxon 延限信息。结果显示，Python 版 Ordinal misfit 在原版解上得到 367，与 CONOP9 完全一致；Level misfit 经 L1 保序回归和逐剖面校正后得到 237，与 CONOP9 输出一致；Eventual misfit 得到 335，较 CONOP9 的 353 低 18，差异主要可能来自 PAV 保序回归中偶数块合并的中位数选择细节。该复现工作不仅验证了项目核心数据流，也为后续快速模拟退火、多目标优化与不确定性分析提供了可解释、可测试的算法基础。
+**摘要**：CONOP9 将多剖面化石首现、末现和标志层资料转化为复合地层序列优化问题，是定量地层对比的重要工具，但其 Windows 二进制和封闭实现限制了自动化验证与误差追踪。围绕南极 Seymour Island 白垩纪-古近纪菊石数据，基于仓库中的 Python 复现代码和 21 组已归档 CONOP9 解，对 Ordinal、Level 和 Eventual 三类 penalty 进行跨解校验。验证脚本从每组 `outmain.txt` 提取 CONOP9 penalty，以相应 `bestsoln.dat` 为输入重新计算 Python penalty。结果显示，Ordinal 和 Level 在 21 个解上均与 CONOP9 完全一致，平均绝对误差为 0；Eventual 在 21 个解上均系统性偏低，平均低 33.76，最大低 83。单一 `bestsoln.dat` 上的 18 分差异不能再解释为偶发误差，而应视为 Eventual 计数规则仍未完全复现。该结果表明，Python 代码已经可靠复现 CONOP9 的顺序约束和 level 延限惩罚，同时也明确限定了 Eventual 相关结论的适用范围。
 
-**关键词**：CONOP；Python 复现；代价函数；保序回归；Ordinal；Level；Eventual
+**关键词**：CONOP；代价函数；Python复现；跨解验证；Eventual penalty；保序回归
 
 **中图分类号**：P539；TP311.1  
-**文献标识码**：A  
-**文章编号**：课程论文-2026-02
+**文献标识码**：A
 
-## Python Reimplementation and Validation of CONOP Misfit Functions
+## Python Cross-Solution Validation of CONOP9 Penalty Functions and Diagnosis of Eventual Bias
 
-**Abstract**: This paper describes a Python reimplementation of CONOP misfit functions based on the `geology-big-data-hw-main` project. The implementation parses CONOP input files, represents composite event sequences, and evaluates Ordinal, Level and Eventual penalties through a shared `ConopContext`. Validation against the original CONOP9 solution shows exact agreement for Ordinal and Level penalties, while Eventual differs by 18 points, probably due to tie-breaking details in isotonic regression. The reimplementation provides a transparent foundation for automated experiments and algorithmic extensions.
+**Abstract**: CONOP9 formulates multi-section stratigraphic correlation as an optimization problem over a composite sequence of first appearances, last appearances and marker events. Its closed Windows binary, however, makes automated validation and error tracing difficult. This study evaluates a Python reimplementation of CONOP penalty functions on the Seymour Island Cretaceous-Paleogene ammonite dataset. Instead of validating against a single reference solution, 21 archived CONOP9 runs were used as cross-solution test cases. For each run, the reference penalties were extracted from `outmain.txt`, and the corresponding `bestsoln.dat` was evaluated independently in Python. The Ordinal and Level penalties matched CONOP9 exactly for all 21 solutions, with zero mean absolute error. The Eventual penalty did not match any solution and was consistently lower than CONOP9, with a mean bias of -33.76 and a maximum absolute difference of 83. These results support the correctness of the Python implementation for order and level-extension penalties, but show that Eventual remains a partially reproduced objective whose counting rule requires further diagnosis.
 
-**Key words**: CONOP; Python reimplementation; misfit function; isotonic regression; Ordinal; Level; Eventual
+**Key words**: CONOP; penalty function; Python reimplementation; cross-solution validation; Eventual penalty; isotonic regression
 
 ## 1 引言
 
-CONOP 的核心思想是将多剖面地层对比问题转化为事件排列问题：所有化石 FAD、LAD 和 marker 被放入一个全局复合序列中，算法寻找使各剖面观测冲突最小的排列。原版 CONOP9 程序在地层学研究中应用广泛，但其二进制程序不便于逐步调试、批量实验和新目标函数开发。对于课程项目而言，仅使用原版程序可以得到结果，却难以回答“为什么该解较好”“某一事件为什么不稳定”“是否能替换接受准则”等更深入的问题。
+定量地层对比的核心困难在于，多剖面化石记录通常存在保存不完备、采样不足和穿时现象。CONOP 将该问题抽象为全局事件排列问题：所有 taxon 的 FAD、LAD 以及年龄或岩性 marker 被放入一个复合序列中，优化算法寻找与各剖面局部观测冲突最小的排列。Sadler 和 Cooper（2008）将这种方法用于提升传统生物地层分带的分辨率，Sadler 等（2009）进一步展示了大规模 graptolite 数据构建高分辨率时间标尺的应用价值。
 
-本项目因此开发了 Python 复现版。该复现不是简单调用 CONOP 输出，而是从输入数据解析、事件序列构建、代价函数计算到模拟退火搜索均重新实现。本文聚焦代价函数部分，说明项目如何将地层约束转化为可计算的 misfit，并讨论与 CONOP9 对齐过程中的关键问题。
+课程项目原始工作使用 CONOP9 二进制程序完成参数扫描，并在 Python 中复现输入解析、代价函数和模拟退火流程。仅能运行原程序并得到一个 best fit，不足以回答代价来自哪里、某个解是否可重复、以及目标函数能否被替换等问题。因此，代码探索的关键不在于写出另一个优化器，而在于确认 Python 计算出的 penalty 是否真正等价于 CONOP9。
 
-## 2 数据结构与输入解析
+原论文草稿只在一个 `bestsoln.dat` 上比较 3 个数字：Ordinal 367、Level 237、Eventual 335 对 353。这种单点校验容易被质疑为对一个 benchmark 过拟合。本研究改用仓库中已经归档的 21 组 CONOP9 解做跨解验证，检验 Python penalty 是否能在不同参数、不同随机重复产生的解上稳定复现 CONOP9 输出。
 
-### 2.1 输入文件解析
+## 2 数据与验证设计
 
-项目中 `conop_py/io.py` 定义了四类核心数据结构：`Section`、`Entity`、`Observation` 与 `SolutionRecord`。其中 `Observation` 保存剖面编号、实体编号、事件类型、层位以及权重信息，是构建代价函数的基础。
+### 2.1 数据集
 
-事件类型采用项目中确认的编码：
+研究对象为南极 Seymour Island 白垩纪-古近纪菊石地层对比数据。输入文件位于 `CONOP-run/`，包括 `sections.txt`、`events.txt`、`loadfile.dat` 和 CONOP9 输出的 `bestsoln.dat`、`outmain.txt`。Python 解析后得到 12 个剖面、49 个 taxon、若干 AGE/ASH marker，以及 120 个复合事件。FAD 和 LAD 是主要生物事件，AGE/ASH 主要作为固定或锚定事件参与约束。
 
-| 类型码 | 含义 | 说明 |
-|---:|---|---|
-| 1 | FAD | 分类单元首现 |
-| 2 | LAD | 分类单元末现 |
-| 4 | ASH | 火山灰层等 marker |
-| 5 | AGE | 同位素年龄约束 marker |
+**表1 数据与结果来源 / Data and result sources**
 
-解析过程特别注意 taxon 与 marker 的区分。`events.txt` 中实体编号并不总是简单连续，因此代码通过 `infer_taxa_from_observations()` 从 `loadfile.dat` 中出现 FAD 或 LAD 的实体推断 taxon 集合，再用 `parse_events()` 标记实体类型。这避免了按编号硬切分导致的错配。
+| 内容 | 文件或目录 | 用途 |
+|---|---|---|
+| 剖面列表 | `CONOP-run/sections.txt` | 剖面编号与名称 |
+| 事件定义 | `CONOP-run/events.txt` | taxon、FAD/LAD、AGE/ASH marker |
+| 局部观测 | `CONOP-run/loadfile.dat` | 每个剖面中事件的观测层位 |
+| CONOP9 解 | `results/*/run_*/bestsoln.dat` | 复合序列排列 |
+| CONOP9 penalty | `results/*/run_*/outmain.txt` | Ordinal、Level、Eventual 参考值 |
+| Python 验证脚本 | `scripts/validate_conop9_penalties.py` | 批量重算并输出误差表 |
 
-### 2.2 复合序列表示
+### 2.2 跨解验证方案
 
-在 Python 版中，一个事件由二元组 `(entity_id, event_type)` 唯一表示。例如某菊石的 FAD 表示为 `(eid, 1)`，LAD 表示为 `(eid, 2)`。`solution_to_sequence()` 将 `bestsoln.dat` 中的三列记录按 position 排序，转换为事件二元组列表。所有代价函数都围绕这个列表计算事件在复合序列中的位置。
+验证集不是单个最优解，而是 `results/` 中 7 组参数、每组 3 次重复，共 21 个 CONOP9 归档运行。每个运行目录同时包含 `bestsoln.dat` 和 `outmain.txt`，因此可以把 CONOP9 输出视为参考值，把 Python 代码作为独立计算器重新评估同一排列。
 
-### 2.3 ConopContext 预计算结构
+具体流程为：
 
-`conop_py/cost.py` 中的 `ConopContext` 是复现版的中心数据结构。它在给定模型序列和剖面观测后预先计算：
+1. 用 `parse_loadfile()` 读取局部观测，并用 `build_section_observations()` 按剖面分组。
+2. 对每个 `results/<tag>/run_<n>/bestsoln.dat`，用 `solution_to_sequence()` 得到复合事件序列。
+3. 构建 `ConopContext`，分别计算 `ordinal_misfit()`、`level_misfit()` 和 `eventual_misfit()`。
+4. 从对应 `outmain.txt` 抽取 CONOP9 的 Ordinal、Level、Eventual penalty。
+5. 输出逐解误差和汇总误差，结果保存为 `results_py/cross_solution_validation/penalty_validation.csv` 与 `summary.csv`。
 
-| 字段 | 作用 |
-|---|---|
-| `pos` | 事件到复合序列位置的映射 |
-| `section_obs` | 每个剖面的观测事件列表 |
-| `sec_levels` | 每个剖面按层位聚合的事件 |
-| `taxon_sec` | 每个 taxon 在每个剖面中的 FAD/LAD 层位 |
-| `taxa` | 同时具有 FAD 和 LAD 的分类单元集合 |
+这种设计把“写代码时参考过的单点答案”与“多个独立归档解上的行为”区分开来。若 Python 只在一个解上对齐，不能说明其在搜索空间中稳定；若在 21 个不同解上均对齐，则更能支持复现结论。
 
-这种设计的意义在于，各类 misfit 共享同一套预计算信息。序列变化时只需用 `rebuild_pos()` 更新事件位置，而不必反复解析数据或重建剖面结构。后续模拟退火中的增量计算也建立在这一结构之上。
+## 3 代价函数形式化
 
-## 3 三类代价函数的实现
+### 3.1 Ordinal penalty
 
-### 3.1 Ordinal misfit
+记复合序列中事件 \(e\) 的全局位置为 \(\pi(e)\)，剖面 \(s\) 中事件 \(e\) 的观测层位为 \(h_s(e)\)。Ordinal penalty 统计局部层位顺序与复合序列顺序相反的事件对：
 
-Ordinal 惩罚统计剖面内观测顺序与复合序列顺序不一致的事件对数。实现时，代码对每个剖面按照实际层位排序，再将事件替换为其在复合序列中的 rank，最后用逆序对计数得到该剖面的 ordinal 罚分。所有剖面罚分相加得到总值。
+\[
+P_{\mathrm{ord}}=\sum_s \sum_{i<j} I\left[h_s(e_i)<h_s(e_j),\ \pi(e_i)>\pi(e_j)\right].
+\]
 
-在原版 `CONOP-run/bestsoln.dat` 上，Python 版 `ordinal_misfit()` 得到 367，与 CONOP9 输出完全一致。这说明输入解析、事件键表示和基本顺序约束均正确，是复现工作的第一道关键校验。
+同一层位的事件在实现中按复合序列位置稳定排序，不额外产生逆序。这个 penalty 只关心先后关系，不关心两个事件之间跨过多少层位。
 
-### 3.2 Level misfit
+### 3.2 Level penalty
 
-Level 惩罚的目标不是简单计算逆序对，而是衡量为了使某一 taxon 的延限范围与复合序列一致，需要在剖面内跨过多少个 distinct horizon。项目采用 L1 保序回归（PAV, pool adjacent violators）计算事件在剖面中的“放置水平”，再比较放置水平与观测水平之间跨越的 horizon 数。
+Level penalty 试图回答另一个问题：为了让某个 taxon 的局部延限与复合序列一致，需要把 FAD 或 LAD 在剖面内移动多少个 distinct horizon。Python 实现将每个剖面的事件按复合序列位置排序，求一个单调非递减的放置层位 \(x_{s,e}\)。约束为：
 
-代码中 `_compute_placed_isotonic()` 对剖面内事件按复合序列位置排序，并为不同类型事件设置 box constraints：
+- FAD 只能放在观测 FAD 的同层或更低层位，即 \(x_{s,e} \le h_s(e)\)。
+- LAD 只能放在观测 LAD 的同层或更高层位，即 \(x_{s,e} \ge h_s(e)\)。
+- AGE/ASH 等 marker 固定在观测层位。
 
-| 事件类型 | 放置约束 |
-|---|---|
-| FAD | 放置水平不高于观测 FAD |
-| LAD | 放置水平不低于观测 LAD |
-| marker | 固定在观测层位 |
+在这些 box constraints 下，代码用 L1 保序回归的 PAV 思路合并违反单调性的相邻块，并用块内观测层位的下中位数作为代表值。最终 penalty 不是距离本身，而是放置层位与观测层位之间跨过的 distinct horizon 数。
 
-若相邻块违反单调性，则 PAV 算法合并块，并用下中位数作为 L1 目标下的代表值。最终 `_sec_level()` 统计每个 FAD 或 LAD 需要向上或向下跨越的 horizon 数。逐剖面结果与 CONOP9 对齐后，`level_misfit()` 在原版解上得到 237，与 CONOP9 的 Level Penalty 一致。
+### 3.3 Eventual penalty
 
-### 3.3 Eventual misfit
+Eventual penalty 复用 Level 的放置层位，但跨过一个 horizon 时不只计 1，而是按该 horizon 上落入该 taxon 复合延限内部的 forcing event 数加权。直观地说，Level 衡量“跨了多少层”，Eventual 衡量“跨过这些层时影响了多少事件”。当前 Python 实现排除 AGE 类型事件，并按复合序列中的 FAD-LAD 内部事件计数。
 
-Eventual 与 Level 的地质含义相近，但跨越某一 horizon 时不再只计 1 分，而是按该 horizon 上位于 taxon 复合延限内部的 forcing event 数加权。因此 Eventual 更强调被延限扩展影响的事件数量，较适合识别局部层位上事件聚集造成的冲突。
+这一函数是本研究的主要偏差来源。由于 CONOP9 没有输出逐事件 Eventual contribution，Python 只能拆分自身贡献，不能直接证明 CONOP9-Python 差异集中在哪些事件上。
 
-项目中 `_sec_eventual()` 复用保序回归放置水平，随后对跨越的每个 horizon 查找该层位上的事件数，并排除 AGE 类型事件。该实现得到 Python Eventual = 335，而 CONOP9 输出为 353，相差 18。由于 Level 已完全对齐，差异不来自输入解析或基本延限逻辑，而更可能来自 Eventual 计数细节或保序回归合并块的 tie-breaking。
+## 4 结果
 
-## 4 校验结果与误差诊断
+### 4.1 单点校验结果
 
-### 4.1 与 CONOP9 的总体对比
+在 `CONOP-run/bestsoln.dat` 这一单个解上，Python 结果为 Ordinal 367、Level 237、Eventual 335；CONOP9 对应输出为 Ordinal 367、Level 237、Eventual 353。Ordinal 和 Level 完全一致，Eventual 低 18。这个结果说明输入解析和前两类 penalty 很可能正确，但单点结果本身不能证明跨解稳定性。
 
-在同一个原版 `bestsoln.dat` 上，三类罚分对比如表 1。
+### 4.2 21个CONOP9解上的跨解验证
 
-**表 1 Python 复现版与 CONOP9 的代价函数对比**
+跨解验证结果显示，Ordinal 和 Level 的复现结论显著强于单点校验：21 个解全部完全一致。Eventual 则没有任何一个解完全一致，并且误差方向一致为 Python 偏低。
 
-| 指标 | Python | CONOP9 | 差异 | 评价 |
-|---|---:|---:|---:|---|
-| Ordinal | 367 | 367 | 0 | 完全一致 |
-| Level | 237 | 237 | 0 | 完全一致 |
-| Eventual | 335 | 353 | -18 | 存在小幅差异 |
+**表2 跨解 penalty 验证汇总 / Cross-solution penalty validation summary**
 
-Ordinal 和 Level 的完全一致，表明项目已经正确复现了 CONOP 最重要的顺序约束与 level 罚分。Eventual 的 -18 差异约占 CONOP9 Eventual 的 5.1%，在地层解释上不改变主要趋势，但对算法对齐具有诊断价值。
+| 指标 | 解数量 | 完全一致数 | MAE | 最大绝对误差 | 平均误差 |
+|---|---:|---:|---:|---:|---:|
+| Ordinal | 21 | 21 | 0.00 | 0.00 | 0.00 |
+| Level | 21 | 21 | 0.00 | 0.00 | 0.00 |
+| Eventual | 21 | 0 | 33.76 | 83.00 | -33.76 |
 
-### 4.2 Eventual 差异的集中位置
+若只看 `steps_0300/run_3`，Eventual 差异为 -18，容易被解释为小实现细节；但在 `ratio_095/run_1` 中，Python Eventual 为 302，CONOP9 为 385，差异达到 -83。这说明 Eventual 偏差不是单个解的偶发异常，而是当前计数规则与 CONOP9 存在系统差别。
 
-项目中的 `scripts/eventual_diagnosis.py` 对 Eventual 贡献进行了剖面和事件拆分。按剖面看，贡献最大的剖面为 Seymour Island C、Seymour Island D、Seymour Island F、Seymour Island A 与 Quiriquina Island；按事件看，Top 10 事件累计贡献约 60%，达到 80% 累计贡献需要前 17 个事件。高贡献事件包括 `Kitchinites darwini` LAD、`Grossouvrites gemmatus` LAD、`Maorites seymourianus` LAD、`Zelandites varuna` FAD 等。
+**表3 代表性运行的逐解误差 / Representative per-run errors**
 
-这说明 Eventual 差异不是均匀分散在所有事件上，而是集中于少数剖面和少数高冲突事件。对课程报告而言，这些事件可作为“矛盾热点”的实例，说明自动化代价函数不仅能给出总分，还能定位问题来源。
+| 参数组 | run | Ordinal差异 | Level差异 | Python Eventual | CONOP9 Eventual | Eventual差异 |
+|---|---|---:|---:|---:|---:|---:|
+| baseline | run_1 | 0 | 0 | 286 | 324 | -38 |
+| ratio_095 | run_1 | 0 | 0 | 302 | 385 | -83 |
+| ratio_099 | run_2 | 0 | 0 | 348 | 361 | -13 |
+| steps_0300 | run_3 | 0 | 0 | 335 | 353 | -18 |
+| temp_500 | run_3 | 0 | 0 | 290 | 324 | -34 |
 
-### 4.3 PAV 中位数选择的影响
+### 4.3 Python Eventual贡献集中性
 
-项目报告提出的最可能解释是 PAV 保序回归在偶数块合并时的中位数选择差异。Python 版 `_lower_median()` 在偶数个观测值中取下中位数；而 CONOP9 的内部实现可能取上中位数或采用略不同的块合并顺序。若 5 至 15 个事件的放置水平因此相差 1 个 horizon，每个事件贡献 1 至 2 分，就可解释约 18 分差距。
+`scripts/eventual_diagnosis.py` 对 `CONOP-run/bestsoln.dat` 的 Python Eventual 贡献做了剖面和事件拆分。结果显示，Python Eventual 的高贡献剖面主要包括 Seymour Island C、D、F、A 和 Quiriquina Island；Top 10 事件贡献约 60%，达到 80% 累计贡献需要前 17 个事件。高贡献事件包括 `Kitchinites darwini` LAD、`Grossouvrites gemmatus` LAD、`Maorites seymourianus` LAD 和 `Zelandites varuna` FAD 等。
 
-这类差异具有方法论意义：对于封闭二进制程序，完全复现不只依赖数学定义，还依赖若干未公开的实现细节。Python 复现版的优势在于所有假设都显式写在代码中，可通过测试锁定，也可在后续实验中替换不同规则。
+![Eventual misfit contribution diagnostics](../results_py/eventual_diag/diag.png)
 
-## 5 工程实现的进一步价值
+*图1 Python Eventual penalty 的剖面、事件和累积贡献拆分。Figure 1. Section-level, event-level and cumulative contribution breakdown of the Python Eventual penalty.*
 
-### 5.1 支持模拟退火自动化
+需要强调的是，图1展示的是 Python 自身 Eventual penalty 的贡献结构，不是 CONOP9 与 Python 差异的逐事件来源。除非获得 CONOP9 的逐项 Eventual contribution，否则不能声称二者差异集中在这些事件上。
 
-在代价函数可复现后，`conop_py/anneal.py` 实现了模拟退火主循环。`AnnealConfig` 包含 `startemp`、`ratio`、`steps`、`trials`、`seed`、`force_fad_before_lad`、`coex_penalty`、`accept_rule` 等配置项。相较原版 CONOP9 手动运行，Python 版可以批量改变参数、记录轨迹、导出解，并在同一脚本中计算多类指标。
+## 5 讨论
 
-### 5.2 支持增量加速与回归测试
+### 5.1 已经可以成立的结论
 
-项目后续在 `conop_py/incremental.py` 中开发了 `FastOrdinalState`，通过维护 per-section ordinal 缓存、事件位置数组和 numba JIT 内核，将 ordinal-only 模拟退火从十余秒级压缩到约一秒级。`tests/test_regression.py` 则锁定了 ordinal、level、eventual、随机扰动回滚和 schema 校验等行为，避免后续改动破坏已对齐的代价函数。
+跨解验证支持一个较强结论：Python 已经复现 CONOP9 的 Ordinal 与 Level penalty。这个结论不再依赖单个 benchmark，因为 21 个不同 CONOP9 解的两类 penalty 均完全一致。对后续模拟退火、参数扫描和多重启分析而言，若优化目标是 Ordinal 或 Level，Python 平台可作为可解释、可自动化的实验环境。
 
-### 5.3 支持多目标扩展
+### 5.2 尚不能成立的结论
 
-`combined_misfit()` 将 Ordinal、Level 和 Eventual 通过权重组合为统一目标，例如 `3×ordinal + level + eventual`。这使项目可以从单一“最小化某个罚分”转向多目标权衡，讨论不同地层解释目标之间的 trade-off。若没有透明的 Python 代价函数，这类扩展很难在原版 CONOP9 上完成。
+Eventual 尚不能写成“已经复现”。当前代码在所有验证解上系统性偏低，说明差异不只是一个小数值误差。PAV 偶数块中位数选择仍可能影响单解中的一部分放置层位，但 21 解结果表明，仅用 lower median 与 upper median 的差别解释全部偏差过于武断。更可能需要同时检查 forcing event 定义、AGE/ASH 排除规则、horizon 集合边界、以及 CONOP9 对局部 range extension 的内部计数方式。
 
-## 6 讨论
+因此，论文结论应改为：Ordinal 和 Level 已经通过跨解复现；Eventual 已完成初步诊断，但仍是待复现目标。后续若要继续推进，最小补充工作不是重跑所有 CONOP9 参数，而是在 Python 中增加若干 Eventual 消融版本，例如包含或排除 marker、改变 horizon 边界闭开区间、改变 PAV tie-breaking，并在同一 21 解验证集上比较哪一种规则最接近 CONOP9。
 
-Python 复现工作最重要的成果，不是简单得到比 CONOP9 更低或更高的数值，而是建立了一套可解释的实验平台。在原版程序中，best fit 是最终输出；在复现版中，每一分 penalty 都能追溯到具体剖面、具体事件和具体算法规则。对于地层学而言，这种可追溯性有助于区分三类问题：真实的地层矛盾、观测数据不足导致的不确定性，以及算法或参数造成的搜索误差。
+### 5.3 工程测试与科学验证的边界
 
-此外，复现结果也提醒我们，地层大数据分析不应只把计算程序当作黑箱。CONOP 的优化目标包含多层地质假设，例如 FAD/LAD 的先后、共存约束、锚点顺序、marker 固定方式和不同 misfit 的权重。每一个假设都会影响最终复合序列。因此，在课程论文和课堂汇报中，应同时展示算法结果和假设条件。
+仓库中的 `tests/test_regression.py` 能保证代码后续修改不会破坏当前实现，例如 Ordinal、Level、Eventual 和模拟退火回滚行为。这类测试是工程回归测试，不等价于科学复现证明。科学验证需要外部参考值和多个测试解。新增的 `scripts/validate_conop9_penalties.py` 正是为了补足这一层证据：它把 CONOP9 的归档输出作为 reference，批量检查 Python penalty 是否跨解一致。
 
-## 7 结论
+## 6 结论
 
-1. 项目成功将 CONOP 输入文件解析为 Python 数据结构，并用 `(entity_id, event_type)` 表示复合序列中的 120 个事件。
-2. `ConopContext` 统一保存事件位置、剖面观测和 taxon 延限信息，使 Ordinal、Level 与 Eventual 代价函数可共享预计算结构。
-3. Python 版 Ordinal misfit 在原版解上得到 367，Level misfit 得到 237，均与 CONOP9 完全一致。
-4. Eventual misfit 得到 335，较 CONOP9 的 353 低 18，主要可能源于 PAV 保序回归中偶数块中位数选择等实现细节。
-5. 透明复现为后续模拟退火加速、多目标权衡、接受准则变体和解不确定性分析提供了可靠基础。
+1. 基于 21 个 CONOP9 归档解的跨解验证，Python 版 Ordinal penalty 与 CONOP9 完全一致，说明局部观测顺序和复合序列位置的解析是可靠的。
+2. Python 版 Level penalty 在 21 个解上也完全一致，支持 L1 保序放置和 distinct horizon 延限计数的实现。
+3. Python 版 Eventual penalty 在全部 21 个解上系统性低于 CONOP9，平均误差 -33.76，最大误差 -83，不能再表述为已复现。
+4. Eventual 贡献拆分能定位 Python 计算中的高冲突剖面和事件，但不能直接定位 CONOP9-Python 差异来源。
+5. 现阶段最可靠的论文表述是：Python 平台已可用于 Ordinal/Level 相关实验；Eventual 需要进一步消融和与 CONOP9 逐项输出对齐后，才能作为完全复现的目标函数使用。
+
+## 作者贡献与数据可得性
+
+代码探索、Python penalty 验证脚本、跨解结果整理和本论文分析由杜鑫宇完成。课程项目仓库中的其他参数扫描、多重启和多目标实验可作为背景材料，但不作为本文核心结论的直接证据。验证脚本为 `scripts/validate_conop9_penalties.py`，输出结果位于 `results_py/cross_solution_validation/`；Eventual 贡献诊断脚本为 `scripts/eventual_diagnosis.py`，输出结果位于 `results_py/eventual_diag/`。
 
 ## 参考文献
 
-Sadler P M, Cooper R A. 2003. Best-fit intervals and consensus sequences. In: Harries P J ed. High-Resolution Approaches in Stratigraphic Paleontology. Dordrecht: Springer, 49-94.
+Barlow R E, Bartholomew D J, Bremner J M, Brunk H D. 1972. Statistical Inference under Order Restrictions[M]. New York: Wiley.
 
-Sadler P M, Kemple W G, Kooser M A. 2003. CONOP9 programs for solving the stratigraphic correlation and seriation problems as constrained optimization. In: Harries P J ed. High-Resolution Approaches in Stratigraphic Paleontology. Dordrecht: Springer, 133-148.
+Best M J, Chakravarti N. 1990. Active set algorithms for isotonic regression: a unifying framework[J]. Mathematical Programming, 47: 425-439. https://doi.org/10.1007/BF01580873.
 
-Barlow R E, Bartholomew D J, Bremner J M, Brunk H D. 1972. Statistical Inference under Order Restrictions. New York: Wiley.
+Sadler P M, Cooper R A. 2008. Best-Fit Intervals and Consensus Sequences[G]//Harries P J, ed. High-Resolution Approaches in Stratigraphic Paleontology. Topics in Geobiology, vol. 21. Dordrecht: Springer, 49-94. https://doi.org/10.1007/978-1-4020-9053-0_2.
 
-Best M J, Chakravarti N. 1990. Active set algorithms for isotonic regression. Mathematical Programming, 47: 425-439.
+Sadler P M, Cooper R A, Melchin M J. 2009. High-resolution, early Paleozoic (Ordovician-Silurian) time scales[J]. Geological Society of America Bulletin, 121(5-6): 887-906. https://doi.org/10.1130/B26357.1.
 
-项目组. 2026. CONOP Python 复现代码[CP/OL]. geology-big-data-hw-main/conop_py.
-
-项目组. 2026. Eventual misfit 溯源报告[Z]. geology-big-data-hw-main/results_py/eventual_diag/report.txt.
-
+Sadler P M, Kemple W G, Kooser M A. 2008. CONOP9 Programs for Solving the Stratigraphic Correlation and Seriation Problems as Constrained Optimization[G]//Harries P J, ed. High-Resolution Approaches in Stratigraphic Paleontology. Topics in Geobiology, vol. 21. Dordrecht: Springer, 461-462. https://doi.org/10.1007/978-1-4020-9053-0_13.
