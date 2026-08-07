@@ -144,17 +144,45 @@ def test_validate_catches_bad_event_type():
     assert any("event_type" in e for e in errs), f"应报 event_type 错误，实际: {errs}"
 
 
-def test_level_only_sa_reaches_reasonable_level():
-    """Level-only SA + coex_penalty=4 应在 baseline 参数下达到 Level < 250。"""
-    from conop_py.anneal import anneal, AnnealConfig
-    from conop_py.cost import level_misfit
+def test_level_only_sa_improves_initial_solution():
+    """Level-only SA smoke test: under a fixed short budget, annealing must
+    improve on its own deterministic initial solution, and the reported
+    best_fit must be self-consistent with the final best sequence.
+
+    This is an optimizer consistency test, not a CONOP9 reproduction test.
+    CONOP9 Level penalty correctness is covered by
+    test_level_current_implementation (level_misfit(bestsoln) == 237) and
+    the 21-solution cross-solution validation (Level 21/21 exact).
+    """
+    import math
+    import random as _random
+    from conop_py.anneal import anneal, AnnealConfig, build_anchor_order, build_initial
+
     obs = parse_loadfile(DATA_DIR / "loadfile.dat")
     ents = parse_events(DATA_DIR / "events.txt",
                         taxon_ids=infer_taxa_from_observations(obs))
+    section_obs = build_section_observations(obs)
+
+    # Deterministic initial sequence, built exactly as anneal(seed=42) builds it
+    rng = _random.Random(42)
+    anchor_order = build_anchor_order(obs)
+    initial_seq = build_initial(ents, obs, rng, anchor_order=anchor_order or None)
+    initial_level = level_misfit(ConopContext.build(initial_seq, section_obs))
+
     cfg = AnnealConfig(startemp=250, ratio=0.98, steps=200, trials=200,
                        seed=42, coex_penalty=4, early_stop_patience=0)
     res = anneal(ents, obs, cfg, misfit_fn=level_misfit, verbose=False)
-    assert res.best_fit < 400, f"Level-only SA failed to converge: Level={res.best_fit}"
+
+    assert math.isfinite(res.best_fit), f"best_fit not finite: {res.best_fit}"
+    recomputed = level_misfit(ConopContext.build(res.best_sequence, section_obs))
+    assert math.isclose(recomputed, res.best_fit, abs_tol=1e-6), (
+        f"best_fit {res.best_fit} inconsistent with recomputed Level "
+        f"{recomputed} on best sequence"
+    )
+    assert res.best_fit < initial_level, (
+        f"SA did not improve on its initial solution: "
+        f"initial_level={initial_level}, best_fit={res.best_fit}"
+    )
 
 
 def test_per_section_ordinal():

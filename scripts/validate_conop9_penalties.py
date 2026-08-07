@@ -6,6 +6,7 @@ import csv
 import re
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -196,12 +197,52 @@ def main() -> None:
         )
 
     if args.check:
-        bad = [
-            item for item in summary
-            if item["metric"] in {"ordinal", "level"} and item["exact"] != item["n"]
-        ]
-        if bad:
-            raise SystemExit("Ordinal/Level validation no longer exactly matches CONOP9")
+        import math
+        errors: list[str] = []
+        runs = diversity[0]["archived_runs"]
+        perms = diversity[0]["unique_permutations"]
+        if runs != 21:
+            errors.append(f"Expected 21 archived runs, found {runs}")
+        if perms != 21:
+            errors.append(f"Expected 21 unique archived permutations, found {perms}")
+
+        baseline = {
+            "ordinal": dict(exact=21, mae=0.0, max_abs=0.0, mean=0.0),
+            "level": dict(exact=21, mae=0.0, max_abs=0.0, mean=0.0),
+            "eventual": dict(exact=0, mae=33.76190476190476,
+                             max_abs=83.0, mean=-33.76190476190476),
+        }
+        for item_raw in summary:
+            item = cast(dict[str, Any], item_raw)
+            metric = str(item["metric"])
+            ref = baseline[metric]
+            n = int(item["n"])
+            exact = int(item["exact"])
+            mae = float(item["mae"])
+            max_abs = float(item["max_abs"])
+            mean_delta = float(item["mean_delta"])
+            if n != 21:
+                errors.append(f"{metric}: expected n=21, found {n}")
+            if exact != ref["exact"]:
+                errors.append(
+                    f"{metric}: expected exact={ref['exact']}, found {exact}")
+            if not math.isclose(mae, ref["mae"], abs_tol=1e-6):
+                errors.append(
+                    f"{metric}: MAE changed from validated baseline "
+                    f"{ref['mae']}, found {mae}")
+            if not math.isclose(max_abs, ref["max_abs"], abs_tol=1e-6):
+                errors.append(
+                    f"{metric}: max_abs changed from validated baseline "
+                    f"{ref['max_abs']}, found {max_abs}")
+            if not math.isclose(mean_delta, ref["mean"], abs_tol=1e-6):
+                errors.append(
+                    f"{metric}: mean_delta changed from validated baseline "
+                    f"{ref['mean']}, found {mean_delta}")
+
+        if errors:
+            raise SystemExit(
+                "Cross-solution validation baseline changed:\n"
+                + "\n".join(f"  - {e}" for e in errors))
 
 
 if __name__ == "__main__":
