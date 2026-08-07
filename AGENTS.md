@@ -52,7 +52,7 @@ uv run scripts/analyze_convergence.py
 conda run -n <env> python scripts/analyze_convergence.py
 ```
 
-依赖：`numpy`, `pandas`, `matplotlib`, `scipy`（见 `requirements.txt`）。`torch` 和 `pymupdf` 按需使用。
+依赖：`numpy`, `pandas`, `matplotlib`, `scipy`（见 `requirements.txt`）。
 
 `results/summary.csv` 是各次运行 best_fit 汇总表，字段：`实验组, run_id, RATIO, STARTEMP, STEPS, best_fit`。
 
@@ -112,7 +112,7 @@ $PY -m pytest tests/test_regression.py -v           # 回归测试（10 项）
 
 ## 输出物
 
-- `论文/`：小论文草稿（格式参考《高校地质学报》）
+- `论文/`：论文源码（本地 workspace，不随仓库分发）
 - `PPT/`：课堂汇报幻灯片
 - `docs/paper/`：课程论文 PDF（公开版）
 

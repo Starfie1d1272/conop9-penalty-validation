@@ -22,5 +22,5 @@ skills-lock.json
 # Reasonix 语义索引缓存（可再生成，非人工研究数据）
 .reasonix/
 
-# 论文源文件不入库（公开版本在 docs/paper/，原始 PDF 含个人标识文件名）
-论文/*.pdf
+# 论文源码目录（本地 workspace，不随仓库分发；公开版本见 docs/paper/）
+/论文/

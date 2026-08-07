@@ -1,3 +1,13 @@
+> Historical research log
+>
+> This document records intermediate hypotheses, experiments, failed
+> approaches, and superseded results in chronological order.
+> For the current validated scientific status, see the repository
+> README and the technical report.
+>
+> 本文档是历史研究日志，其中包含已被后续实验修正或取代的中间结论；
+> 当前有效结论以 README 与最终 technical report 为准。
+
 # CONOP 项目探索日志
 
 > 南极 Seymour Island 菊石地层定量对比  
